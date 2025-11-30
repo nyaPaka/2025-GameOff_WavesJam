@@ -1,0 +1,680 @@
+<!--
+  Project: 2025 Game Off Waves Jam
+  Author: JEMScape.Art
+  Year: 2025
+
+  SPDX-License-Identifier: MPL-2.0
+
+  This source is provided so people can play, judge, and learn from the jam entry.
+  See LICENSE in the repository root for full legal terms.
+
+  Additional restriction (author intent):
+  - This work is NOT permitted for:
+    * Machine learning training
+    * Dataset creation
+    * Automated scraping
+    * AI evaluation
+    * Reproduction of game ideas, mechanics, or narrative structure
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>It's all about the Waves, man.</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 1.5rem 3rem;
+            border-radius: 12px;
+            min-width: 400px;
+        }
+
+        #round {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        #status {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: #4fc3f7;
+        }
+
+        #timer-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        #timer-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4fc3f7, #29b6f6);
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        #grade {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 1rem 0;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        #feedback {
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            opacity: 0.8;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+        }
+
+        #instructions p {
+            margin: 0.3rem 0;
+            font-size: 0.9rem;
+        }
+
+        #key-guide {
+            display: flex;
+            justify-content: center;
+            gap: 0.3rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .key-label {
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid;
+        }
+
+        .grade-S { color: #ffd700; }
+        .grade-A { color: #4fc3f7; }
+        .grade-B { color: #66bb6a; }
+        .grade-C { color: #ffa726; }
+        .grade-F { color: #ef5350; }
+
+        #start-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: transform 0.2s;
+            margin-right: 0.5rem;
+        }
+
+        #start-button:hover {
+            transform: scale(1.05);
+        }
+
+        #freeplay-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border: none;
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: transform 0.2s;
+        }
+
+        #freeplay-button:hover {
+            transform: scale(1.05);
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="ui">
+        <div id="round">Round 1</div>
+        <div id="status">Click Start to Begin</div>
+        <div id="timer-container" style="display: none;">
+            <div id="timer-bar"></div>
+        </div>
+        <div id="grade" style="display: none;"></div>
+        <div id="feedback"></div>
+        <div class="button-container">
+            <button id="start-button">Start Game</button>
+            <button id="freeplay-button">Free Play</button>
+        </div>
+    </div>
+
+    <div id="instructions">
+        <p><strong>How to Play:</strong> Watch and listen as the CPU plays a sequence</p>
+        <p>Recreate it using the piano keys below</p>
+        <p>Move your mouse left/right to match the pitch bend</p>
+        <div id="key-guide"></div>
+    </div>
+
+    <script>
+        // --- Canvas + layout ---------------------------------------------------
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // --- Audio + input state ----------------------------------------------
+        let audioContext = null;
+        let currentOscillator = null;
+        let currentGainNode = null;
+        let mouseX = 0.5;
+        let mouseY = 0.5;
+
+        // Keyboard layout → base frequencies
+        const keyMap = {
+            'a': 261.63, 'w': 277.18, 's': 293.66, 'e': 311.13,
+            'd': 329.63, 'f': 349.23, 't': 369.99, 'g': 392.00,
+            'y': 415.30, 'h': 440.00, 'u': 466.16, 'j': 493.88,
+            'k': 523.25, 'l': 587.33
+        };
+
+        const keyArray = Object.keys(keyMap);
+        const waves = [];
+
+        // --- Game state --------------------------------------------------------
+        // waiting → cpu_playing → player_turn → feedback
+        let gameState = 'waiting';
+        let currentRound = 1;
+        let cpuSequence = [];
+        let playerSequence = [];
+        let roundStartTime = 0;
+        let cpuPlaybackDuration = 0;
+        let playerTimeLimit = 0;
+        let playerStartTime = 0;
+        let visualOpacity = 1.0;
+        let isFreePlay = false;
+        const activeOscillators = {};
+
+        document.getElementById('start-button').addEventListener('click', startGame);
+        document.getElementById('freeplay-button').addEventListener('click', startFreePlay);
+
+        // --- Modes: Free Play vs Game -----------------------------------------
+        function startFreePlay() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            isFreePlay = true;
+            gameState = 'freeplay';
+            document.getElementById('start-button').style.display = 'none';
+            document.getElementById('freeplay-button').style.display = 'none';
+            document.getElementById('round').textContent = 'Free Play Mode';
+            document.getElementById('status').textContent = 'Play anything you like!';
+            document.getElementById('feedback').textContent = 'Press ESC to return to menu';
+            document.getElementById('grade').style.display = 'none';
+            document.getElementById('timer-container').style.display = 'none';
+        }
+
+        function startGame() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            isFreePlay = false;
+            document.getElementById('start-button').style.display = 'none';
+            document.getElementById('freeplay-button').style.display = 'none';
+            document.getElementById('grade').style.display = 'none';
+            currentRound = 1;
+            startRound();
+        }
+
+        // --- Round lifecycle ---------------------------------------------------
+        function startRound() {
+            gameState = 'cpu_playing';
+            playerSequence = [];
+            document.getElementById('round').textContent = 'Round ' + currentRound;
+            document.getElementById('status').textContent = 'CPU Playing...';
+            document.getElementById('feedback').textContent = '';
+            document.getElementById('grade').style.display = 'none';
+            document.getElementById('timer-container').style.display = 'none';
+
+            // Visual help fades as rounds progress
+            if (currentRound <= 3) {
+                visualOpacity = 1.0;
+            } else if (currentRound <= 6) {
+                visualOpacity = 0.66;
+            } else if (currentRound <= 9) {
+                visualOpacity = 0.33;
+            } else {
+                visualOpacity = 0;
+            }
+
+            // Extend CPU sequence by one note each round
+            if (cpuSequence.length === 0) {
+                cpuSequence = generateSequence(2);
+            } else {
+                cpuSequence.push(generateNote());
+            }
+
+            roundStartTime = Date.now();
+            playCPUSequence();
+        }
+
+        function generateSequence(length) {
+            var seq = [];
+            for (var i = 0; i < length; i++) {
+                seq.push(generateNote());
+            }
+            return seq;
+        }
+
+        function generateNote() {
+            var key = keyArray[Math.floor(Math.random() * keyArray.length)];
+            var bendX = 0.3 + Math.random() * 0.4;
+            return { key: key, bendX: bendX };
+        }
+
+        function playCPUSequence() {
+            var index = 0;
+            var noteDelay = 600;
+
+            function playNextNote() {
+                if (index >= cpuSequence.length) {
+                    cpuPlaybackDuration = Date.now() - roundStartTime;
+                    playerTimeLimit = cpuPlaybackDuration * 2;
+                    setTimeout(startPlayerTurn, 500);
+                    return;
+                }
+
+                var note = cpuSequence[index];
+                playNote(note.key, note.bendX, 400, true);
+                index++;
+                setTimeout(playNextNote, noteDelay);
+            }
+
+            playNextNote();
+        }
+
+        function startPlayerTurn() {
+            gameState = 'player_turn';
+            playerStartTime = Date.now();
+            document.getElementById('status').textContent = 'Your Turn!';
+            document.getElementById('timer-container').style.display = 'block';
+            updateTimer();
+        }
+
+        function updateTimer() {
+            if (gameState !== 'player_turn') return;
+
+            var elapsed = Date.now() - playerStartTime;
+            var remaining = Math.max(0, playerTimeLimit - elapsed);
+            var percentage = (remaining / playerTimeLimit) * 100;
+
+            document.getElementById('timer-bar').style.width = percentage + '%';
+
+            if (remaining <= 0) {
+                endPlayerTurn();
+            } else {
+                requestAnimationFrame(updateTimer);
+            }
+        }
+
+        function endPlayerTurn() {
+            gameState = 'feedback';
+            document.getElementById('timer-container').style.display = 'none';
+
+            var result = evaluatePerformance();
+            displayFeedback(result);
+
+            if (result.passed) {
+                currentRound++;
+                setTimeout(startRound, 3000);
+            } else {
+                setTimeout(resetGame, 4000);
+            }
+        }
+
+        // --- Grading logic -----------------------------------------------------
+        function evaluatePerformance() {
+            var timeTaken = Date.now() - playerStartTime;
+
+            if (playerSequence.length !== cpuSequence.length) {
+                var percentage = (playerSequence.length / cpuSequence.length) * 100;
+                return {
+                    passed: false,
+                    grade: 'F',
+                    message: 'Incomplete sequence (' + Math.round(percentage) + '% complete)'
+                };
+            }
+
+            var totalDeviation = 0;
+            var correctNotes = 0;
+            var correctKeys = 0;
+
+            for (var i = 0; i < cpuSequence.length; i++) {
+                var cpuNote = cpuSequence[i];
+                var playerNote = playerSequence[i];
+
+                if (cpuNote.key === playerNote.key) {
+                    correctKeys++;
+
+                    var cpuFreq = calculateFrequency(cpuNote.key, cpuNote.bendX);
+                    var playerFreq = calculateFrequency(playerNote.key, playerNote.bendX);
+                    var deviation = Math.abs(cpuFreq - playerFreq) / cpuFreq;
+
+                    totalDeviation += deviation;
+                    if (deviation <= 0.15) correctNotes++;
+                }
+            }
+
+            var keyAccuracy = (correctKeys / cpuSequence.length) * 100;
+            var avgDeviation = correctKeys > 0 ? totalDeviation / correctKeys : 1.0;
+            var timeRatio = timeTaken / cpuPlaybackDuration;
+
+            // Must have B to pass
+            if (keyAccuracy < 100) {
+                var grade;
+                if (keyAccuracy >= 80) grade = 'B';
+                else if (keyAccuracy >= 60) grade = 'C';
+                else if (keyAccuracy >= 40) grade = 'D';
+                else grade = 'F';
+
+                return {
+                    passed: false,
+                    grade: grade,
+                    message: Math.round(keyAccuracy) + '% correct keys - close!'
+                };
+            }
+
+            // All keys correct - grade pitch + timing
+            if (avgDeviation <= 0.05 && timeRatio <= 1.2) {
+                return { passed: true, grade: 'S', message: 'Perfect! Lightning fast!' };
+            } else if (avgDeviation <= 0.10 && timeRatio <= 1.5) {
+                return { passed: true, grade: 'A', message: 'Excellent work!' };
+            } else if (avgDeviation <= 0.15 && timeRatio <= 2.0) {
+                return { passed: true, grade: 'B', message: 'Good job!' };
+            } else if (correctNotes === cpuSequence.length) {
+                return { passed: true, grade: 'C', message: 'Sequence correct, but work on accuracy' };
+            } else {
+                return { passed: false, grade: 'D', message: 'Keys correct but pitch accuracy needs work' };
+            }
+        }
+
+        function calculateFrequency(key, bendX) {
+            var baseFreq = keyMap[key];
+            var bendMultiplier = Math.pow(2, (bendX - 0.5) * 2);
+            return baseFreq * bendMultiplier;
+        }
+
+        function displayFeedback(result) {
+            var gradeEl = document.getElementById('grade');
+            var feedbackEl = document.getElementById('feedback');
+
+            gradeEl.textContent = result.grade;
+            gradeEl.className = 'grade-' + result.grade;
+            gradeEl.style.display = 'block';
+
+            feedbackEl.textContent = result.message;
+
+            if (result.passed) {
+                document.getElementById('status').textContent = 'Round Complete!';
+            } else {
+                document.getElementById('status').textContent = 'Game Over';
+            }
+        }
+
+        function resetGame() {
+            cpuSequence = [];
+            currentRound = 1;
+            gameState = 'waiting';
+            isFreePlay = false;
+            document.getElementById('status').textContent = 'Click Start to Try Again';
+            document.getElementById('start-button').style.display = 'inline-block';
+            document.getElementById('freeplay-button').style.display = 'inline-block';
+            document.getElementById('grade').style.display = 'none';
+            document.getElementById('feedback').textContent = '';
+        }
+
+        // --- Audio + visuals ---------------------------------------------------
+        function playNote(key, bendX, duration, isCPU) {
+            if (!audioContext) return;
+
+            var baseFreq = keyMap[key];
+            var bendMultiplier = Math.pow(2, (bendX - 0.5) * 2);
+            var finalFreq = baseFreq * bendMultiplier;
+
+            var oscillator = audioContext.createOscillator();
+            var gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(finalFreq, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start();
+
+            if (isFreePlay) {
+                // Continuous note until keyup
+                activeOscillators[key] = { osc: oscillator, gain: gainNode };
+            } else {
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+                oscillator.stop(audioContext.currentTime + duration / 1000);
+            }
+
+            var x = bendX * canvas.width;
+            var y = canvas.height / 2;
+            var color = frequencyToColor(finalFreq);
+            var opacity = isCPU ? visualOpacity : 1.0;
+
+            waves.push({
+                x: x,
+                y: y,
+                radius: 0,
+                maxRadius: 300,
+                colorH: color.h,
+                colorS: color.s,
+                colorL: color.l,
+                alpha: opacity,
+                letter: key.toUpperCase(),
+                letterAlpha: 1.0,
+                age: 0
+            });
+        }
+
+        function frequencyToColor(freq) {
+            var minFreq = 261.63;
+            var maxFreq = 587.33;
+            var normalizedFreq = (freq - minFreq) / (maxFreq - minFreq);
+            var hue = normalizedFreq * 270;
+            return { h: hue, s: 80, l: 60 };
+        }
+
+        // --- Input handling ----------------------------------------------------
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX / window.innerWidth;
+            mouseY = e.clientY / window.innerHeight;
+        });
+
+        const keysPressed = new Set();
+
+        document.addEventListener('keydown', function(e) {
+            // ESC to exit free play
+            if (e.key === 'Escape' && isFreePlay) {
+                for (var key in activeOscillators) {
+                    var data = activeOscillators[key];
+                    data.gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                    data.osc.stop(audioContext.currentTime + 0.1);
+                }
+                for (var key in activeOscillators) {
+                    delete activeOscillators[key];
+                }
+                resetGame();
+                return;
+            }
+
+            var key = e.key.toLowerCase();
+
+            if (isFreePlay && keyMap[key]) {
+                e.preventDefault();
+                if (!keysPressed.has(key)) {
+                    keysPressed.add(key);
+                    playNote(key, mouseX, 0, false);
+                }
+                return;
+            }
+
+            if (gameState !== 'player_turn') return;
+
+            if (keyMap[key] && !keysPressed.has(key)) {
+                e.preventDefault();
+                keysPressed.add(key);
+
+                playerSequence.push({ key: key, bendX: mouseX });
+                playNote(key, mouseX, 400, false);
+
+                if (playerSequence.length === cpuSequence.length) {
+                    setTimeout(endPlayerTurn, 500);
+                }
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            var key = e.key.toLowerCase();
+            if (keyMap[key]) {
+                keysPressed.delete(key);
+
+                if (isFreePlay && activeOscillators[key]) {
+                    var data = activeOscillators[key];
+                    data.gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                    data.osc.stop(audioContext.currentTime + 0.1);
+                    delete activeOscillators[key];
+                }
+            }
+        });
+
+        // --- Animation loop ----------------------------------------------------
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (var i = waves.length - 1; i >= 0; i--) {
+                var wave = waves[i];
+
+                wave.radius += 3;
+                wave.alpha -= 0.01;
+                wave.age += 1;
+
+                if (wave.age < 20) {
+                    wave.letterAlpha = 1.0 - (wave.age / 20);
+                } else {
+                    wave.letterAlpha = 0;
+                }
+
+                if (wave.alpha <= 0 || wave.radius >= wave.maxRadius) {
+                    waves.splice(i, 1);
+                    continue;
+                }
+
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'hsla(' + wave.colorH + ', ' + wave.colorS + '%, ' + wave.colorL + '%, ' + wave.alpha + ')';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                if (wave.letterAlpha > 0) {
+                    ctx.save();
+                    ctx.font = 'bold 48px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    var dissolveAmount = (1 - wave.letterAlpha) * 20;
+                    for (var j = 0; j < 5; j++) {
+                        var offsetX = (Math.random() - 0.5) * dissolveAmount;
+                        var offsetY = (Math.random() - 0.5) * dissolveAmount;
+                        var particleAlpha = wave.letterAlpha * (1 - j * 0.15);
+
+                        ctx.fillStyle = 'hsla(' + wave.colorH + ', ' + wave.colorS + '%, ' + wave.colorL + '%, ' + particleAlpha + ')';
+                        ctx.fillText(wave.letter, wave.x + offsetX, wave.y + offsetY);
+                    }
+
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- UI helpers --------------------------------------------------------
+        function initKeyGuide() {
+            var keyGuide = document.getElementById('key-guide');
+            for (var i = 0; i < keyArray.length; i++) {
+                var key = keyArray[i];
+                var freq = keyMap[key];
+                var color = frequencyToColor(freq);
+
+                var keyLabel = document.createElement('div');
+                keyLabel.className = 'key-label';
+                keyLabel.textContent = key.toUpperCase();
+                keyLabel.style.borderColor = 'hsl(' + color.h + ', ' + color.s + '%, ' + color.l + '%)';
+                keyLabel.style.color = 'hsl(' + color.h + ', ' + color.s + '%, ' + color.l + '%)';
+                keyGuide.appendChild(keyLabel);
+            }
+        }
+
+        window.addEventListener('load', function() {
+            initKeyGuide();
+        });
+
+        animate();
+    </script>
+</body>
+</html>
